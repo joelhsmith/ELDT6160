@@ -58,6 +58,7 @@ export default function App() {
   });
   const [draggedCountry, setDraggedCountry] = useState<Country | null>(null);
   const [gameOver, setGameOver] = useState(false);
+  const [gameStarted, setGameStarted] = useState(false);
   const [voiceEnabled, setVoiceEnabled] = useState(true);
   const [audioUnlocked, setAudioUnlocked] = useState(false);
   
@@ -409,6 +410,34 @@ export default function App() {
 
   return (
     <div className="min-h-screen text-[#E2E2E2] font-sans p-4 md:p-8 flex flex-col items-center relative overflow-hidden bg-[#050507]">
+      {/* Start Screen Overlay */}
+      <AnimatePresence>
+        {!gameStarted && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setGameStarted(true)}
+            className="fixed inset-0 z-[100] bg-black flex items-center justify-center cursor-pointer"
+          >
+            <motion.div 
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              transition={{ delay: 0.2 }}
+              className="relative w-full h-full flex items-center justify-center"
+            >
+              <img 
+                src="/start-screen.png" 
+                alt="Geography Invaders Start Screen" 
+                className="max-w-full max-h-screen object-contain"
+                referrerPolicy="no-referrer"
+              />
+              <div className="absolute inset-0 bg-black/10 hover:bg-transparent transition-colors" />
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       <div className="w-full flex flex-col items-center">
         {/* Header */}
       <header className="w-full max-w-5xl flex flex-col md:flex-row justify-between items-center mb-8 gap-4">
@@ -653,15 +682,26 @@ export default function App() {
             <ul className="space-y-4 text-xs font-medium text-cyan-100">
               <li className="flex gap-3">
                 <span className="text-cyan-400 font-mono font-bold">01</span>
-                <span className="leading-relaxed">Establish a <span className="text-cyan-400 font-bold">HUB</span> by deploying to any available sector.</span>
+                <span className="leading-relaxed">Drag a <span className="text-cyan-400 font-bold">country name</span> over a country shape on the map.</span>
               </li>
               <li className="flex gap-3">
                 <span className="text-cyan-400 font-mono font-bold">02</span>
-                <span className="leading-relaxed">Expand territory by deploying to sectors <span className="text-cyan-400 font-bold">ADJACENT</span> to your current Hub.</span>
+                <span className="leading-relaxed">Your first choice is your <span className="text-cyan-400 font-bold">hub country</span> for 1 point to start your invasion from.</span>
               </li>
               <li className="flex gap-3">
                 <span className="text-cyan-400 font-mono font-bold">03</span>
-                <span className="leading-relaxed">Secure <span className="text-cyan-400 font-bold">BONUS DATA</span> (+2 pts) for each neighbor captured.</span>
+                <span className="leading-relaxed">Expand territory by naming <span className="text-cyan-400 font-bold">adjacent countries</span> for 2 extra points each.</span>
+              </li>
+              <li className="flex flex-col gap-2">
+                <div className="flex gap-3">
+                  <span className="text-cyan-400 font-mono font-bold">04</span>
+                  <span className="leading-relaxed">Your turn is <span className="text-rose-400 font-bold underline">OVER</span> if:</span>
+                </div>
+                <ul className="ml-8 space-y-1 list-disc text-[10px] opacity-80">
+                  <li>You run out of adjacent countries.</li>
+                  <li>You try to play a country that is not adjacent.</li>
+                  <li>You get one wrong.</li>
+                </ul>
               </li>
             </ul>
           </div>
