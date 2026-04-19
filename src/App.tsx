@@ -9,14 +9,6 @@ import { RefreshCcw, Info, CheckCircle2, AlertCircle, Loader2, Volume2, VolumeX 
 import confetti from 'canvas-confetti';
 import * as d3 from 'd3';
 
-// Audio Assets
-const SOUNDS = {
-  TURN_START: 'https://www.soundjay.com/buttons/sounds/button-16.mp3',
-  CORRECT: 'https://www.soundjay.com/buttons/sounds/button-37.mp3',
-  ERROR: 'https://www.soundjay.com/buttons/sounds/button-10.mp3',
-  VICTORY: 'https://www.soundjay.com/misc/sounds/bell-ringing-05.mp3'
-};
-
 // Types
 interface Country {
   id: string;
@@ -75,37 +67,47 @@ export default function App() {
   // Load voices and listen for changes
   useEffect(() => {
     const loadVoices = () => {
-      voicesRef.current = window.speechSynthesis.getVoices();
+      const voices = window.speechSynthesis.getVoices();
+      if (voices.length > 0) {
+        voicesRef.current = voices;
+      }
     };
     loadVoices();
     if (window.speechSynthesis.onvoiceschanged !== undefined) {
       window.speechSynthesis.onvoiceschanged = loadVoices;
     }
+    // Periodic refresh for some browsers where it's delayed
+    const interval = setInterval(loadVoices, 1000);
+    return () => clearInterval(interval);
   }, []);
 
-  // Unlock audio on first interaction
+  // Silent Audio Unlocker on first interaction
   useEffect(() => {
     const unlock = () => {
       if (audioUnlocked) return;
       
-      // Silent play to unlock audio
-      const audio = new Audio();
-      audio.play().catch(() => {});
-      
-      // Test speech (some browsers need this to unlock)
+      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+      if (AudioCtx) {
+        const ctx = new AudioCtx();
+        if (ctx.state === 'suspended') {
+          ctx.resume();
+        }
+      }
+
+      // Unlock speech
       if ('speechSynthesis' in window) {
-        const utterance = new SpeechSynthesisUtterance("");
-        window.speechSynthesis.speak(utterance);
+        window.speechSynthesis.cancel();
+        const u = new SpeechSynthesisUtterance("");
+        window.speechSynthesis.speak(u);
       }
       
       setAudioUnlocked(true);
       
-      // Announce current state once unlocked
-      if (message.text) {
-        announce(message.text);
-      }
+      // Initial announcement now that we are unlocked
+      setTimeout(() => {
+        if (message.text) announce(message.text);
+      }, 300);
       
-      // Remove listeners
       window.removeEventListener('mousedown', unlock);
       window.removeEventListener('touchstart', unlock);
       window.removeEventListener('keydown', unlock);
@@ -120,27 +122,44 @@ export default function App() {
       window.removeEventListener('touchstart', unlock);
       window.removeEventListener('keydown', unlock);
     };
-  }, [audioUnlocked]);
+  }, [audioUnlocked, message.text]);
 
-  // New Local TTS / Sound Effect Helper
-  const announce = (text: string, soundUrl?: string) => {
+  // Simple Beep Synthesizer using Web Audio API
+  const playBeep = (freq = 440, volume = 0.05) => {
+    if (!audioUnlocked) return;
+    try {
+      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+      if (!AudioCtx) return;
+      const audioCtx = new AudioCtx();
+      const oscillator = audioCtx.createOscillator();
+      const gainNode = audioCtx.createGain();
+
+      oscillator.type = 'sine';
+      oscillator.frequency.setValueAtTime(freq, audioCtx.currentTime);
+
+      gainNode.gain.setValueAtTime(volume, audioCtx.currentTime);
+      gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.15);
+
+      oscillator.connect(gainNode);
+      gainNode.connect(audioCtx.destination);
+
+      oscillator.start();
+      oscillator.stop(audioCtx.currentTime + 0.15);
+    } catch (e) {
+      console.warn('Beep failed:', e);
+    }
+  };
+
+  // Tactical Voice Briefing Helper
+  const announce = (text: string) => {
     if (!voiceEnabled || !audioUnlocked) return;
 
-    // Play Sound Effect
-    if (soundUrl) {
-      const audio = new Audio(soundUrl);
-      audio.volume = 0.4;
-      audio.play().catch((e) => console.warn('Audio play failed:', e));
-    }
-
-    // Local Speech Synthesis (Offline/No Service)
     if ('speechSynthesis' in window) {
-      window.speechSynthesis.cancel(); // Stop any pending speech
+      window.speechSynthesis.cancel(); 
       const utterance = new SpeechSynthesisUtterance(text);
       utterance.rate = 1.2;
       utterance.pitch = 0.9;
       
-      // Try to find a British voice (en-GB)
       const voices = voicesRef.current.length > 0 ? voicesRef.current : window.speechSynthesis.getVoices();
       const britishVoice = voices.find(v => v.lang === 'en-GB' || v.name.includes('UK') || v.name.includes('British'));
       if (britishVoice) utterance.voice = britishVoice;
@@ -149,26 +168,14 @@ export default function App() {
     }
   };
 
-  // Watch for message changes to announce (only after unlock)
+  // Watch for message changes to announce
   useEffect(() => {
     if (message.text && audioUnlocked) {
-      let sound = undefined;
-      if (message.type === 'success') sound = SOUNDS.CORRECT;
-      if (message.type === 'error') sound = SOUNDS.ERROR;
-      
-      announce(message.text, sound);
+      announce(message.text);
     }
   }, [message.text, audioUnlocked]);
 
   const allPlacedIds = useMemo(() => [...player1Ids, ...player2Ids], [player1Ids, player2Ids]);
-
-  // Turn start sound (only after unlock)
-  useEffect(() => {
-    if (gameOver || !voiceEnabled || !audioUnlocked) return;
-    const audio = new Audio(SOUNDS.TURN_START);
-    audio.volume = 0.5;
-    audio.play().catch((e) => console.warn('Turn audio failed:', e));
-  }, [currentPlayer, voiceEnabled, gameOver, audioUnlocked]);
 
   // Fetch GeoJSON on mount
   useEffect(() => {
@@ -250,6 +257,7 @@ export default function App() {
     const nextPlayer = currentPlayer === 1 ? 2 : 1;
     setCurrentPlayer(nextPlayer);
     setTurnHubId(null);
+    playBeep(220, 0.1); // Low beep for end of turn / error
     setMessage({
       text: `${errorMsg} Turn over! Player ${nextPlayer}'s turn.`,
       type: 'error'
@@ -372,11 +380,13 @@ export default function App() {
       const nextPlayer = currentPlayer === 1 ? 2 : 1;
       setCurrentPlayer(nextPlayer);
       setTurnHubId(null);
+      playBeep(220, 0.1); // Low beep for end of turn
       setMessage({
         text: `${countryName} placed (+${points}). ${isFirstMoveOfTurn ? 'Hub has no neighbors!' : 'Hub territory complete!'} Player ${nextPlayer}'s turn.`,
         type: 'success'
       });
     } else {
+      playBeep(880, 0.08); // High beep for successful move
       setMessage({ 
         text: `Correct! ${countryName} (+${points})${isBonus ? ' — Hub Bonus!' : ''}. Still your turn!`, 
         type: 'success' 
@@ -404,15 +414,20 @@ export default function App() {
       <header className="w-full max-w-5xl flex flex-col md:flex-row justify-between items-center mb-8 gap-4">
         <div className="flex flex-col items-center md:items-start">
           <h1 className="text-4xl font-display font-black tracking-tighter text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-blue-600">Geography Invaders</h1>
-          <div className="flex items-center gap-3 mt-1">
-            <p className="text-sm uppercase tracking-[0.3em] text-cyan-300 font-medium">Central America Challenge</p>
-            <span className="px-2 py-0.5 bg-cyan-900/30 text-cyan-400 text-[10px] border border-cyan-400/30 rounded-sm font-bold uppercase tracking-tighter">2 Players</span>
+          <div className="flex items-center gap-3 mt-2">
+            <p className="text-[10px] uppercase tracking-[0.3em] text-cyan-400 opacity-60 font-medium">Central America Challenge</p>
+            <div className="h-4 w-[1px] bg-white/10" />
             <button 
               onClick={() => setVoiceEnabled(!voiceEnabled)}
-              className={`p-1.5 rounded-md border transition-all ${voiceEnabled ? 'bg-cyan-500/20 border-cyan-500 text-cyan-400 shadow-[0_0_10px_rgba(34,211,238,0.2)]' : 'bg-stone-900/50 border-stone-700 text-stone-500'}`}
-              title={voiceEnabled ? "Disable Tactical Voice" : "Enable Tactical Voice"}
+              className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border transition-all ${
+                voiceEnabled ? 'bg-cyan-500/10 border-cyan-500/50 text-cyan-400' : 'bg-stone-800/50 border-stone-700 text-stone-500'
+              }`}
+              title={voiceEnabled ? "Mute Tactical Voice" : "Unmute Tactical Voice"}
             >
-              {voiceEnabled ? <Volume2 size={14} /> : <VolumeX size={14} />}
+              {voiceEnabled ? <Volume2 size={12} /> : <VolumeX size={12} />}
+              <span className="text-[9px] font-bold uppercase tracking-widest">
+                {voiceEnabled ? "Voice Active" : "Voice Muted"}
+              </span>
             </button>
           </div>
         </div>
