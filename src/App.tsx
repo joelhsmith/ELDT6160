@@ -52,9 +52,10 @@ export default function App() {
   const [turnHubId, setTurnHubId] = useState<string | null>(null);
   const [currentPlayer, setCurrentPlayer] = useState<1 | 2>(1);
   const [scores, setScores] = useState({ 1: 0, 2: 0 });
-  const [message, setMessage] = useState<{ text: string; type: 'success' | 'error' | 'info' }>({
+  const [message, setMessage] = useState<{ text: string; type: 'success' | 'error' | 'info'; timestamp: number }>({
     text: 'Player 1: Pick a Hub for this turn!',
-    type: 'info'
+    type: 'info',
+    timestamp: Date.now()
   });
   const [draggedCountry, setDraggedCountry] = useState<Country | null>(null);
   const [gameOver, setGameOver] = useState(false);
@@ -106,7 +107,11 @@ export default function App() {
       
       // Initial announcement now that we are unlocked
       setTimeout(() => {
-        if (message.text) announce(message.text);
+        if (!gameStarted) {
+          announce("Welcome invaders");
+        } else if (message.text) {
+          announce(message.text);
+        }
       }, 300);
       
       window.removeEventListener('mousedown', unlock);
@@ -158,7 +163,7 @@ export default function App() {
     if ('speechSynthesis' in window) {
       window.speechSynthesis.cancel(); 
       const utterance = new SpeechSynthesisUtterance(text);
-      utterance.rate = 1.2;
+      utterance.rate = 0.75;
       utterance.pitch = 0.9;
       
       const voices = voicesRef.current.length > 0 ? voicesRef.current : window.speechSynthesis.getVoices();
@@ -174,7 +179,14 @@ export default function App() {
     if (message.text && audioUnlocked) {
       announce(message.text);
     }
-  }, [message.text, audioUnlocked]);
+  }, [message.timestamp, audioUnlocked]);
+
+  // Welcome announcement when start screen is displayed
+  useEffect(() => {
+    if (!gameStarted && audioUnlocked) {
+      announce("Welcome invaders");
+    }
+  }, [gameStarted, audioUnlocked]);
 
   const allPlacedIds = useMemo(() => [...player1Ids, ...player2Ids], [player1Ids, player2Ids]);
 
@@ -247,7 +259,8 @@ export default function App() {
     setScores({ 1: 0, 2: 0 });
     setCurrentPlayer(1);
     setGameOver(false);
-    setMessage({ text: 'Player 1: Pick a Hub for this turn!', type: 'info' });
+    setGameStarted(false);
+    setMessage({ text: 'Player 1: Pick a Hub for this turn!', type: 'info', timestamp: Date.now() });
   };
 
   const handleDragStart = (country: Country) => {
@@ -261,7 +274,8 @@ export default function App() {
     playBeep(220, 0.1); // Low beep for end of turn / error
     setMessage({
       text: `${errorMsg} Turn over! Player ${nextPlayer}'s turn.`,
-      type: 'error'
+      type: 'error',
+      timestamp: Date.now()
     });
   };
 
@@ -326,14 +340,16 @@ export default function App() {
         // Hit some other country not in our list
         setMessage({
           text: `Dropped in the water! Try again, Player ${currentPlayer}.`,
-          type: 'info'
+          type: 'info',
+          timestamp: Date.now()
         });
       }
     } else {
       // Dropped in water
       setMessage({
         text: `Dropped in the water! Try again, Player ${currentPlayer}.`,
-        type: 'info'
+        type: 'info',
+        timestamp: Date.now()
       });
     }
     setDraggedCountry(null);
@@ -373,7 +389,11 @@ export default function App() {
       const winner = finalScores[1] > finalScores[2] ? 1 : finalScores[2] > finalScores[1] ? 2 : 0;
       const winnerText = winner === 0 ? "The game is a draw!" : `Player ${winner} is the victor!`;
       
-      setMessage({ text: `Game Over! ${countryName} placed. ${winnerText} Final score: Player 1: ${finalScores[1]}, Player 2: ${finalScores[2]}.`, type: 'success' });
+      setMessage({ 
+        text: `Game Over! ${countryName} placed. ${winnerText} Final score: Player 1: ${finalScores[1]}, Player 2: ${finalScores[2]}.`, 
+        type: 'success',
+        timestamp: Date.now()
+      });
       return;
     }
 
@@ -384,13 +404,15 @@ export default function App() {
       playBeep(220, 0.1); // Low beep for end of turn
       setMessage({
         text: `${countryName} placed (+${points}). ${isFirstMoveOfTurn ? 'Hub has no neighbors!' : 'Hub territory complete!'} Player ${nextPlayer}'s turn.`,
-        type: 'success'
+        type: 'success',
+        timestamp: Date.now()
       });
     } else {
       playBeep(880, 0.08); // High beep for successful move
       setMessage({ 
         text: `Correct! ${countryName} (+${points})${isBonus ? ' — Hub Bonus!' : ''}. Still your turn!`, 
-        type: 'success' 
+        type: 'success',
+        timestamp: Date.now()
       });
     }
   };
@@ -417,7 +439,10 @@ export default function App() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            onClick={() => setGameStarted(true)}
+            onClick={() => {
+              setGameStarted(true);
+              setMessage(prev => ({ ...prev, timestamp: Date.now() }));
+            }}
             className="fixed inset-0 z-[100] bg-black flex items-center justify-center cursor-pointer"
           >
             <motion.div 
